@@ -1,6 +1,7 @@
 //***************************************************SETUP CODE**************************************************///
-const SENSOR_INTERVAL_TIME = 100;
-const IP_ADDRESS = '10.20.0.15';
+var SENSOR_INTERVAL_TIME = 100;
+var SENSOR_IP_ADDRESS = '10.20.0.15';
+var ROBOT_IP_ADDRESS = '10.20.0.25'
 var enable_logging = false;
 
 const http = require('http');
@@ -28,33 +29,44 @@ var pyshell;
 //***********************************************READ EXTRA DATA CODE*******************************************///
 if (fs.existsSync("./robot.extra")) {
     var extra = fs.readFileSync("./robot.extra", "utf8", (err) => {}).split(',');
-    console.log(extra);
     for (var i = extra.length - 1; i >= 0; i--) {
         extraRobotData.push(extra[i])
     }
 }
 //*************************************************CMD LINE ARGS CODE*******************************************///
-if (process.argv[2] === '-h' || process.argv[2] === '-help') {
-    console.log("usage: node streamdata.js [-h] [-log t/f]");
-    process.exit();
 
-} else if (process.argv[2] === '-log') {
-    const flag = process.argv[3];
+if (process.argv.length < 4) {
+    console.log("Usage: node streamdata.js <robot ip> <ft sensor ip> [options ...]");
+    console.log("\nOptions:")
+    console.log("-ftpoll <refresh rate (ms)> \t Change the polling rate of the FT sensor. Default is 100ms")
+    console.log("-log <t/f> \t\t\t Enable logging. Default is false ")
+    process.exit()
+}
+SENSOR_IP_ADDRESS = process.argv[3]
+ROBOT_IP_ADDRESS = process.argv[2]
 
-    if (flag && (flag.toUpperCase() === 'T' || flag.toUpperCase() === 'TRUE')) {
-        enable_logging = true;
+for (var i = 4; i < process.argv.length; i++) {
+    if (process.argv[i] === '-log') {
 
-        //create the write stream file
-        forcetorquestream = fs.createWriteStream(Date.now() + '_forcetorque_data.csv');
+        var flag = process.argv[i + 1];
 
-        //stream to write robot data to the file 
-        robotstream = fs.createWriteStream(Date.now() + '_robot_data.csv');
+        if (flag && (flag.toUpperCase() === 'T' || flag.toUpperCase() === 'TRUE')) {
+            enable_logging = true;
 
-        //if logging is enabled write this header
-        forcetorquestream.write("Fx (N),Fy (N),Fz (N),Tx (Nm),Ty (Nm),Tz (Nm)\n");
+            //create the write stream file
+            forcetorquestream = fs.createWriteStream(Date.now() + '_forcetorque_data.csv');
 
-        //if logging is enabled write this header
-        robotstream.write("X, Y, Z, RX, RY, RZ," + extraRobotData.toString() + "\n");
+            //stream to write robot data to the file 
+            robotstream = fs.createWriteStream(Date.now() + '_robot_data.csv');
+
+            //if logging is enabled write this header
+            forcetorquestream.write("Fx (N),Fy (N),Fz (N),Tx (Nm),Ty (Nm),Tz (Nm)\n");
+
+            //if logging is enabled write this header
+            robotstream.write("X, Y, Z, RX, RY, RZ," + extraRobotData.toString() + "\n");
+        }
+    } else if (process.argv[i] === '-ftpoll') {
+        SENSOR_INTERVAL_TIME = process.argv[i + 1];
     }
 }
 
@@ -73,6 +85,7 @@ function runPythonProcess() {
     pyshell = new PythonShell('rtd.py', {
         mode: 'text',
         pythonOptions: ['-u'], // get print results in real-time
+        args: ['--host', ROBOT_IP_ADDRESS + ""]
     });
 
     //when we get a message from the script
@@ -164,7 +177,7 @@ runPythonProcess();
 function getAndParseXML() {
 
     //get the data
-    var req = http.request({ host: IP_ADDRESS, path: '/status.xml' }, function(response) {
+    var req = http.request({ host: SENSOR_IP_ADDRESS, path: '/status.xml' }, function(response) {
         var xmlData = '';
 
         //chunk the data

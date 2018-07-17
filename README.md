@@ -1,5 +1,5 @@
 # UR3 Data Capture
-Stream data from the robot and optitrack 6 axis force torque sensor.
+Stream data from the [UR3](https://www.universal-robots.com/products/ur3-robot/) and Optoforce <sup>now OnRobot</sup> 6 axis force torque sensor.
 
 **Installation**
 
@@ -8,6 +8,15 @@ Stream data from the robot and optitrack 6 axis force torque sensor.
 Also dont forget to change the [```host ```](https://github.com/rushadantia/UR3-Data-Capture/blob/master/streamdata.js#L3) ip to the ip address of the sensor and  [```host```](https://github.com/rushadantia/UR3-Data-Capture/blob/master/rtd.py#L29) ip to the ip address of the robot.
 
 Visit ```localhost:3000``` to see the data in action live.
+
+# Usage
+```Usage: node streamdata.js <robot ip> <ft sensor ip> [options ...]```
+
+```Options:```
+
+```-ftpoll <refresh rate (ms)> Change the polling rate of the FT sensor. Default is 100ms```
+
+```-log <t/f> Enable logging. Default is false ```
 
 # How it works
 ![Site](https://github.com/rushadantia/UR3-Data-Capture/blob/master/md/img.png?raw=true)
