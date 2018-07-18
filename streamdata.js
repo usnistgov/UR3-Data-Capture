@@ -1,24 +1,25 @@
 //***************************************************SETUP CODE**************************************************///
-var SENSOR_INTERVAL_TIME = 100;
-var SENSOR_IP_ADDRESS = '10.20.0.15';
-var ROBOT_IP_ADDRESS = '10.20.0.25'
-var enable_logging = false;
-
-const http = require('http');
-
-var xml2js = require('xml2js');
-var fs = require('fs');
-var parser = new xml2js.Parser();
-
-var forcetorquestream = null;
-var robotstream = null;
-
-const express = require('express');
+var SENSOR_INTERVAL_TIME = 10;                      //sensor poll rate hz
+var SENSOR_IP_ADDRESS = '10.20.0.15';               //sensor ip
+var ROBOT_INTERVAL_TIME = 10;                       //robot data poll rate hz
+var ROBOT_IP_ADDRESS = '10.20.0.25'                 //robot ip
+var enable_logging = false;                         //loggin is false by default
+            
+const http = require('http');                       //http library used to get the sensor data
+            
+var xml2js = require('xml2js');                     //library for parsing the XML from the FT Sensor
+var fs = require('fs');                             //filesystem for file I/O
+var parser = new xml2js.Parser();                   //XML parser
+            
+var forcetorquestream = null;                       //file I/O stream for FT sensor values
+var robotstream = null;                             //file I/O stream for robot data values
+            
+const express = require('express');                 //used to host a web server
 const app = express();
-const expressServer = app.listen(3000);
-const io = require('socket.io')(expressServer);
+const expressServer = app.listen(3000);             //listen the webserver on port 3000
+const io = require('socket.io')(expressServer);     //create a websocket 
 const bodyParser = require('body-parser');
-const PythonShell = require('python-shell');
+const PythonShell = require('python-shell');        //shell to pyscript for robot data aqusision
 var currData = 'NONE';
 var currRobotData = 'NONE'
 var timeRecieved = 0;
@@ -27,21 +28,24 @@ var prevRobotData = "NONE"
 var extraRobotData = []
 var pyshell;
 //***********************************************READ EXTRA DATA CODE*******************************************///
-if (fs.existsSync("./robot.extra")) {
+//check if the file exists in a synchronous fashion 
+if (fs.existsSync("./robot.extra")) {       
     var extra = fs.readFileSync("./robot.extra", "utf8", (err) => {}).split(',');
     for (var i = extra.length - 1; i >= 0; i--) {
         extraRobotData.push(extra[i])
     }
 }
 //*************************************************CMD LINE ARGS CODE*******************************************///
-
+//check for command line arguments
 if (process.argv.length < 4) {
     console.log("Usage: node streamdata.js <robot ip> <ft sensor ip> [options ...]");
     console.log("\nOptions:")
-    console.log("-ftpoll <refresh rate (ms)> \t Change the polling rate of the FT sensor. Default is 100ms")
+    console.log("-ftpoll <refresh rate (Hz)> \t Change the polling rate of the FT sensor. Default is 10Hz")
+    console.log("-rbpoll <refresh rate (Hz)> \t Change the polling rate of the Robot Data. Default is 10Hz")
     console.log("-log <t/f> \t\t\t Enable logging. Default is false ")
     process.exit()
 }
+
 SENSOR_IP_ADDRESS = process.argv[3]
 ROBOT_IP_ADDRESS = process.argv[2]
 
@@ -60,13 +64,15 @@ for (var i = 4; i < process.argv.length; i++) {
             robotstream = fs.createWriteStream(Date.now() + '_robot_data.csv');
 
             //if logging is enabled write this header
-            forcetorquestream.write("Fx (N),Fy (N),Fz (N),Tx (Nm),Ty (Nm),Tz (Nm)\n");
+            forcetorquestream.write("Current Time (ms),Fx (N),Fy (N),Fz (N),Tx (Nm),Ty (Nm),Tz (Nm)\n");
 
             //if logging is enabled write this header
-            robotstream.write("X, Y, Z, RX, RY, RZ," + extraRobotData.toString() + "\n");
+            robotstream.write("Current Time (ms),X, Y, Z, RX, RY, RZ," + extraRobotData.toString() + "\n");
         }
     } else if (process.argv[i] === '-ftpoll') {
         SENSOR_INTERVAL_TIME = process.argv[i + 1];
+    } else if (process.argv[i] === '-rbpoll') {
+        ROBOT_INTERVAL_TIME = process.argv[i + 1];
     }
 }
 
@@ -76,6 +82,7 @@ setInterval(() => {
     // console.log('\033c')
     console.log("CRD: " + currRobotData)
     console.log("CD: " + currData)
+    // console.log("FT:" + SENSOR_INTERVAL_TIME + " RB: "+ ROBOT_INTERVAL_TIME)
 }, 250);
 
 //***********************************CATCH ALL THE PYTHON OUTPUT CODE*******************************************///
@@ -85,7 +92,7 @@ function runPythonProcess() {
     pyshell = new PythonShell('rtd.py', {
         mode: 'text',
         pythonOptions: ['-u'], // get print results in real-time
-        args: ['--host', ROBOT_IP_ADDRESS + ""]
+        args: ['--host', ROBOT_IP_ADDRESS, '--frequency', ROBOT_INTERVAL_TIME]
     });
 
     //when we get a message from the script
@@ -145,7 +152,7 @@ function runPythonProcess() {
 
             prevRobotData = currRobotData
 
-            if (enable_logging) robotstream.write(toSend + "\n")
+            if (enable_logging) robotstream.write(Date.now() + "," + toSend + "\n")
 
         }
     });
@@ -159,6 +166,7 @@ function runPythonProcess() {
     });
 }
 
+//used only to emit data when it changes
 function checkRobotData(data1, data2) {
     const data = data1.split(", ");
     const other2 = data2.split(", ")
@@ -186,6 +194,7 @@ function getAndParseXML() {
         //when the end of the data is reached then parse the xml data
         response.on('end', function() {
 
+            //parse the xml string
             parser.parseString(xmlData, (err, result) => {
 
                 //get the data
@@ -232,7 +241,7 @@ function getAndParseXML() {
                 io.sockets.emit('sensor-update', { data: s })
 
                 //if the logging is enabled then write it to the file
-                if (enable_logging) forcetorquestream.write(s + "\n")
+                if (enable_logging) forcetorquestream.write(Date.now() + "," + s + "\n")
 
             });
 
@@ -254,7 +263,7 @@ function getAndParseXML() {
 }
 
 //run it every X ms
-setInterval(getAndParseXML, SENSOR_INTERVAL_TIME); //////////////////REENABLE WHEN SITE IS UP
+setInterval(getAndParseXML,  (1 / SENSOR_INTERVAL_TIME) * 1000); //////////////////REENABLE WHEN SITE IS UP
 
 //***************************************************WINDOWS CODE**************************************************///
 if (process.platform === "win32") {
@@ -363,7 +372,7 @@ io.sockets.on('connection', (socket) => {
         extraRobotData = data;
 
         if (enable_logging)
-            robotstream.write("X, Y, Z, RX, RY, RZ," + extraRobotData.toString() + "\n");
+            robotstream.write("Current Time(ms),X, Y, Z, RX, RY, RZ," + extraRobotData.toString() + "\n");
 
         if (extraRobotData.length >= 1) {
             fs.writeFileSync("robot.extra", extraRobotData)
